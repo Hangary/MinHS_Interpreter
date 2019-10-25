@@ -1,0 +1,2 @@
+main :: Int
+    = (recfun mul :: (Int -> Int -> Int) = (*)) 4 3;

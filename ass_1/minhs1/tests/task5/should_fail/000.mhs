@@ -1,0 +1,4 @@
+main :: Int
+    = let y :: Int = 3;
+        in let f :: (Int -> Int) x = (f x) + 1; -- f should be out of scope
+            in f y; -- returns 4

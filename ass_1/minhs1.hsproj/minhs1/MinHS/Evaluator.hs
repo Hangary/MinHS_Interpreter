@@ -12,8 +12,9 @@ data Value = I Integer
              | Nil
              | Cons Integer Value
              -- Others as needed
-             | FunV (E.Env Value) [String] Exp
-             deriving (Show)
+             | FunV (E.Env Value) String Exp
+             | PartialPrimV (Value -> Value)
+             --deriving (Show)
 
 instance PP.Pretty Value where
   pretty (I i) = numeric $ i
@@ -40,52 +41,61 @@ evalE env (App (App (Con "Cons") e1) e2) =
         v2 = evalE env e2 in
       Cons i1 v2
 
--- Primitive Operations
-evalE env (App (Prim op) e1) = 
-  let v = evalE env e1 in
-    case op of
-      Neg   -> let I i1 = v in I (- i1)
-      -- listops
-      Head  -> case v of 
-                Nil -> error "Head of a null list"
-                Cons int ls -> I int
-      Tail  -> case v of 
-                Nil -> error "Tail of a null list"
-                Cons int ls -> ls
-      Null  -> case v of Nil          -> B True
-                         Cons int ls  -> B False
-
-evalE env (App (App (Prim op) e1) e2) = 
-  let v1 = evalE env e1
-      v2 = evalE env e2 in
-    case op of
-      -- calculate
-      Add ->  let I i1 = v1; I i2 = v2 in I (i1 + i2)
-      Sub ->  let I i1 = v1; I i2 = v2 in I (i1 - i2)
-      Mul ->  let I i1 = v1; I i2 = v2 in I (i1 * i2)
-      Quot -> let I i1 = v1; I i2 = v2 in 
-                case i2 of 
-                  0 -> error "divide by zero"
-                  _ -> I (div i1 i2)
-      -- compare
-      Gt -> let I i1 = v1; I i2 = v2 in B (i1 >  i2)
-      Ge -> let I i1 = v1; I i2 = v2 in B (i1 >= i2)
-      Lt -> let I i1 = v1; I i2 = v2 in B (i1 <  i2)
-      Le -> let I i1 = v1; I i2 = v2 in B (i1 <= i2)
-      Eq -> let I i1 = v1; I i2 = v2 in B (i1 == i2)
-      Ne -> let I i1 = v1; I i2 = v2 in B (i1 /= i2)
-
 -- Variable binding
 evalE env (Let bs e) =
-  let getNewEnv env [] = env
-      getNewEnv env (b:bs) = getNewEnv newEnv bs
-        where Bind id _ [] e = b
-              v = evalE env e
-              newEnv = E.add env (id, v)
-  in evalE (getNewEnv env bs) e
+  case bs of 
+    []    -> evalE env e
+    x:xs  -> let Bind id _ args bindE = x
+                 newEnv = case args of
+                    [] -> E.add env (id, evalE env bindE) 
+                    _  -> E.add env (id, evalE env (Recfun x))
+             in evalE newEnv (Let xs e)
 
 evalE env (Var id) = 
   let Just v = E.lookup env id in v
+
+-- Letrec
+evalE env (Letrec bs e) = 
+  let getPairs :: E.Env Value -> [Bind] -> [(String, Value)]
+      getPairs env1 [] = []
+      getPairs env1 (x:xs) =
+        let Bind id _ args bindE = x
+            pair = case args of
+                          [] -> (id, evalE env1 bindE)
+                          _  -> (id, evalE env1 (Recfun x))
+        in  pair:(getPairs env1 xs)
+      newEnv = E.addAll env (getPairs newEnv bs)
+  in  evalE newEnv e
+
+
+-- Primitive Operations
+evalE env (Prim op) = 
+  case op of
+      Neg   -> PartialPrimV (\v -> let I i1 = v in I (- i1))
+      -- listops
+      Head  -> PartialPrimV (\v -> case v of 
+                  Nil -> error "Head of a null list"
+                  Cons int ls -> I int)
+      Tail  -> PartialPrimV (\v -> case v of 
+                  Nil -> error "Tail of a null list"
+                  Cons int ls -> ls)
+      Null  -> PartialPrimV (\v -> case v of 
+                  Nil -> B True
+                  Cons int ls  -> B False)
+      -- calculate
+      Add ->  PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in I (i1 + i2)))
+      Sub ->  PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in I (i1 - i2)))
+      Mul ->  PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in I (i1 * i2)))
+      Quot -> PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in case i2 of 
+                  0 -> error "divide by zero"
+                  _ -> I (div i1 i2)))
+      -- compare
+      Gt -> PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in B (i1 >  i2)))
+      Ge -> PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in B (i1 >= i2)))
+      Lt -> PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in B (i1 <  i2)))
+      Le -> PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in B (i1 <= i2)))
+      Eq -> PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in B (i1 == i2)))
+      Ne -> PartialPrimV (\v1 -> PartialPrimV (\v2 -> let I i1 = v1; I i2 = v2 in B (i1 /= i2)))
 
 -- IfThenElse
 evalE env (If e1 e2 e3) =
@@ -93,19 +103,28 @@ evalE env (If e1 e2 e3) =
     B True  -> evalE env e2
     B False -> evalE env e3
     
--- Function and Application
+-- Function
 evalE env (Recfun bind) = 
-  let Bind id _ args e = bind in
+  let Bind id t args e = bind in
     case args of 
-      []  -> let v = evalE newEnv e
-                 newEnv = E.add env (id, v)
-             in v
-      _   -> let fun = FunV newEnv args e
-                 newEnv = E.add env (id, fun)
-             in fun
+      []    ->  let v = evalE newEnv e
+                    newEnv = E.add env (id, v)
+                in v
+      x:[]  ->  let fun = FunV newEnv x e
+                    newEnv = E.add env (id, fun)
+                in  fun
+      x:xs  ->  let Arrow t1 t2 = t
+                    fun = FunV newEnv x e2
+                    e2 = Recfun (Bind (id ++ " _") t2 xs e)
+                    newEnv = E.add env (id, fun)
+                in  fun
 
-evalE env (App f arg) =
-  let FunV closure args e = evalE env f
-      argV = evalE env arg
-      newEnv = E.add closure (head args, argV)
-  in  evalE newEnv e
+-- Application
+evalE env (App f arg) = 
+  let argV = evalE env arg in
+  case evalE env f of 
+    FunV closure arg e -> let newEnv = E.add closure (arg, argV)
+                           in  evalE newEnv e
+    PartialPrimV f      -> f argV
+
+

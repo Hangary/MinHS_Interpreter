@@ -1,0 +1,5 @@
+-- As with 002, but bound to a variable
+main :: Int
+    = let mul :: (Int -> Int -> Int)
+        = recfun mul :: (Int -> Int -> Int) = (*);
+    in mul 4 3;
