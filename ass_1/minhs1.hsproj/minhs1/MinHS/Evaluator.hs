@@ -12,6 +12,7 @@ data Value = I Integer
              | Nil
              | Cons Integer Value
              -- Others as needed
+             | FunV (E.Env Value) [String] Exp
              deriving (Show)
 
 instance PP.Pretty Value where
@@ -45,8 +46,12 @@ evalE env (App (Prim op) e1) =
     case op of
       Neg   -> let I i1 = v in I (- i1)
       -- listops
-      Head  -> let Cons int ls = v in I int
-      Tail  -> let Cons int ls = v in ls
+      Head  -> case v of 
+                Nil -> error "Head of a null list"
+                Cons int ls -> I int
+      Tail  -> case v of 
+                Nil -> error "Tail of a null list"
+                Cons int ls -> ls
       Null  -> case v of Nil          -> B True
                          Cons int ls  -> B False
 
@@ -58,13 +63,17 @@ evalE env (App (App (Prim op) e1) e2) =
       Add ->  let I i1 = v1; I i2 = v2 in I (i1 + i2)
       Sub ->  let I i1 = v1; I i2 = v2 in I (i1 - i2)
       Mul ->  let I i1 = v1; I i2 = v2 in I (i1 * i2)
-      Quot -> let I i1 = v1; I i2 = v2 in I (div i1 i2)  -- error divide by zero
+      Quot -> let I i1 = v1; I i2 = v2 in 
+                case i2 of 
+                  0 -> error "divide by zero"
+                  _ -> I (div i1 i2)
       -- compare
       Gt -> let I i1 = v1; I i2 = v2 in B (i1 >  i2)
       Ge -> let I i1 = v1; I i2 = v2 in B (i1 >= i2)
       Lt -> let I i1 = v1; I i2 = v2 in B (i1 <  i2)
       Le -> let I i1 = v1; I i2 = v2 in B (i1 <= i2)
       Eq -> let I i1 = v1; I i2 = v2 in B (i1 == i2)
+      Ne -> let I i1 = v1; I i2 = v2 in B (i1 /= i2)
 
 -- Variable binding
 evalE env (Let bs e) =
@@ -83,3 +92,20 @@ evalE env (If e1 e2 e3) =
   case evalE env e1 of 
     B True  -> evalE env e2
     B False -> evalE env e3
+    
+-- Function and Application
+evalE env (Recfun bind) = 
+  let Bind id _ args e = bind in
+    case args of 
+      []  -> let v = evalE newEnv e
+                 newEnv = E.add env (id, v)
+             in v
+      _   -> let fun = FunV newEnv args e
+                 newEnv = E.add env (id, fun)
+             in fun
+
+evalE env (App f arg) =
+  let FunV closure args e = evalE env f
+      argV = evalE env arg
+      newEnv = E.add closure (head args, argV)
+  in  evalE newEnv e

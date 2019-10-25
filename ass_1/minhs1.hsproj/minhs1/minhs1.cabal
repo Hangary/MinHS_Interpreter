@@ -21,9 +21,9 @@ executable minhs-1
     default-language: Haskell2010
     other-modules:
         MinHS.Evaluator
-        MinHS.Parse
+        MinHS.Env
         MinHS.Syntax
         MinHS.TypeChecker
-        MinHS.Env
+        MinHS.Parse
         MinHS.Pretty
 
