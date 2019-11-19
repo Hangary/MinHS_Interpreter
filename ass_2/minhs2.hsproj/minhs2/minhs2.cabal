@@ -1,0 +1,29 @@
+cabal-version: >=1.10
+name: minhs2
+version: 0.1.0.0
+maintainer: liamoc@cse.unsw.edu.au
+author: Liam O'Connor
+synopsis: An interpreter for MinHS
+category: Language
+x-ghc-framework-version: 8.6.4-13.14-2
+x-last-ide-version: HfM1.7.0
+build-type: Simple
+
+executable minhs-2
+    main-is: Main.hs
+    other-modules:
+        MinHS.TCMonad
+        MinHS.Parse
+        MinHS.TyInfer
+        MinHS.Env
+        MinHS.Pretty
+        MinHS.Subst
+        MinHS.Evaluator
+        MinHS.Syntax
+    default-language: Haskell2010
+    build-depends:
+        base -any,
+        optparse-applicative -any,
+        ansi-wl-pprint -any,
+        containers -any,
+        parsec -any
