@@ -9,8 +9,6 @@ import Data.Monoid (Monoid (..), (<>))
 import Data.Foldable (foldMap)
 import Data.List (nub, union, (\\))
 
-import Debug.Trace -- for debugging
-
 primOpType :: Op -> QType
 primOpType Gt   = Ty $ Base Int `Arrow` (Base Int `Arrow` Base Bool)
 primOpType Ge   = Ty $ Base Int `Arrow` (Base Int `Arrow` Base Bool)
@@ -133,14 +131,20 @@ unify t (TypeVar v) = unify (TypeVar v) t
 generalise :: Gamma -> Type -> QType
 generalise g t = let all_tvs = tv t 
                      gamma_tvs = tvGamma g
-                     free_tvs = filter (`notElem` gamma_tvs) all_tvs
+                     free_tvs = all_tvs \\ gamma_tvs
                  in  foldr Forall (Ty t) free_tvs
 
 
 -- infer the whole program
 inferProgram :: Gamma -> Program -> TC (Program, Type, Subst)
-inferProgram env bs = error "implement me! don't forget to run the result substitution on the"
-                            "entire expression using allTypes from Syntax.hs"
+inferProgram env bs = case bs of
+  [Bind "main" user_type [] e] -> do
+    (e', t, tee) <- inferExp env e
+    let t' = substitute tee t  
+        e'' = allTypes (substQType tee) e' -- run the result substitution on the entire expression
+        t'' = generalise env t
+    return ([Bind "main" (Just t'') [] e''], t', tee)
+
 
 -- infer an expression
 inferExp :: Gamma -> Exp -> TC (Exp, Type, Subst)
@@ -149,7 +153,7 @@ inferExp :: Gamma -> Exp -> TC (Exp, Type, Subst)
 inferExp g (Num n) = return (Num n, Base Int, emptySubst)
 -- Variable
 inferExp g (Var x) = case E.lookup g x of
-  Nothing -> typeError $ NoSuchVariable x
+  Nothing -> typeError $ NoSuchVariable x -- if cannot find this var
   Just t -> do
     t' <- unquantify t  -- remove all quantifiers
     return (Var x, t', emptySubst)
@@ -178,9 +182,8 @@ inferExp g (App e1 e2) = do
       rhs = Arrow t2 alpha
   u <- unify lhs rhs
   -- update the type of e1
-  let updated_e1' = allTypes (substQType (u <> tee <> tee')) e1'
   -- return
-  return (App updated_e1' e2', substitute u alpha, u <> tee <> tee')
+  return (App e1' e2', substitute u alpha, u <> tee' <> tee)
 
 -- If-Then-Else
 inferExp g (If e e1 e2) = do 
@@ -192,11 +195,11 @@ inferExp g (If e e1 e2) = do
   let new_g = substGamma (u <> tee) g
   (e1', t1, tee1) <- inferExp new_g e1
   -- infer e2
-  let new_g = substGamma (u <> tee <> tee1) g
+  let new_g = substGamma (tee1 <> u <> tee) g
   (e2', t2, tee2) <- inferExp new_g e2
   u' <- unify (substitute tee2 t1) t2
   -- return
-  return (If e' e1' e2', substitute u' t2, u <> u' <> tee <> tee1 <> tee2)
+  return (If e' e1' e2', substitute u' t2, u' <> tee2 <> tee1 <> u <> tee)
 
 -- Case
 -- Note: this is the only case you need to handle for case expressions
@@ -210,17 +213,17 @@ inferExp g (Case e cases) = case cases of
     (e1', tl, tee1) <- inferExp new_g e1
     -- infer e2
     alphaR <- fresh
-    let new_g = substGamma (tee <> tee1) (E.add g (y, Ty alphaR))
+    let new_g = substGamma (tee1 <> tee) (E.add g (y, Ty alphaR))
     (e2', tr, tee2) <- inferExp new_g e2
     -- unify
     u  <- unify (substitute (tee2 <> tee1 <> tee) (Sum alphaL alphaR)) (substitute (tee2 <> tee1) t)
     u' <- unify (substitute (u <> tee2) tl) (substitute u tr)
     -- return
-    return (Case e' [Alt "Inl" [x] e1', Alt "Inr" [y] e2'], substitute (u <> u') tr, u <> u' <> tee <> tee1 <> tee2)
+    return (Case e' [Alt "Inl" [x] e1', Alt "Inr" [y] e2'], substitute (u' <> u) tr, u' <> u <> tee2 <> tee1 <> tee)
   _ -> typeError MalformedAlternatives
 
 -- Recursive Functions
-inferExp g (Recfun (Bind f qt xs e)) = do
+inferExp g (Recfun (Bind f user_type xs e)) = do
     -- infer e
     alpha1 <- fresh
     alpha2 <- fresh
@@ -231,15 +234,8 @@ inferExp g (Recfun (Bind f qt xs e)) = do
         rhs = Arrow (substitute tee alpha1) t
     u  <- unify lhs rhs
     -- return
-    -- check the given type
     let inferred_t = substitute u rhs
-    case qt of 
-      -- when no given types
-      Nothing -> return (Recfun (Bind f (Just (Ty inferred_t)) xs e'), inferred_t, u <> tee)
-      Just given_qt@(Ty given_t) -> do
-        u' <- unify inferred_t given_t
-        let new_t = substitute u' inferred_t
-        return (Recfun (Bind f (Just (Ty new_t)) xs e'), new_t, u <> tee)
+    return (Recfun (Bind f (Just (Ty inferred_t)) xs e'), inferred_t, u <> tee)
     
 -- Let Bindings
 -- generalise is neccessary here, for polymorphic types
@@ -252,7 +248,7 @@ inferExp g (Let bs e2) = case bs of
         new_g = E.add (substGamma tee g) (x, qt_x)
     (e2', t', tee') <- inferExp new_g e2
     -- return
-    return (Let [Bind x (Just qt_x) [] e1'] e2', t', tee <> tee')
+    return (Let [Bind x (Just qt_x) [] e1'] e2', t', tee' <> tee)
 
 
 
