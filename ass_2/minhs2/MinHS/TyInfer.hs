@@ -94,37 +94,39 @@ module MinHS.TyInfer where
                                     unquantify' (i + 1)
                                                 ((show i =: x') <> s)
                                                 (substQType (x =:TypeVar (show i)) t)
+   
   
+  -- a helper function for unify
+  unifyHelper :: (Type, Type) -> (Type, Type) -> TC Subst
+  unifyHelper (t11, t12) (t21, t22) = do 
+    s <- unify t11 t21
+    s' <- unify (substitute s t12) (substitute s t22)
+    return (s <> s') 
                                                 
   -- unify is to form a substition for two given types
   unify :: Type -> Type -> TC Subst
-  -- base type
+  -- both type var
+  unify (TypeVar v1) (TypeVar v2)
+    | v1 == v2 = return emptySubst
+    | v1 /= v2 = return $ v1 =: TypeVar v2
+  -- both primitive type
   unify (Base c1) (Base c2)
     | c1 == c2 = return emptySubst
     | c1 /= c2 = typeError $ TypeMismatch (Base c1) (Base c2)
-  -- sum type
-  unify (Sum t11 t12) (Sum t21 t22) = do
-    s   <- unify t11 t21
-    s'  <- unify t12 t22
-    return $ s <> s'
-  -- product type
-  unify (Prod t11 t12) (Prod t21 t22) = do
-    s   <- unify t11 t21
-    s'  <- unify t12 t22
-    return $ s <> s'
-  -- function type
-  unify (Arrow t11 t12) (Arrow t21 t22) = do
-    s   <- unify t11 t21
-    s'  <- unify t12 t22
-    return $ s <> s'  
-  -- with type var
-  unify (TypeVar v1) (TypeVar v2)
-    | v1 == v2 = return emptySubst
-    | v1 /= v2 = return $ v2 =: TypeVar v1
+  -- both product type, sum type or function type
+  unify t1@(Prod t11 t12) t2@(Prod t21 t22) = 
+    unifyHelper (t11, t12) (t21, t22)
+  unify t1@(Sum t11 t12) t2@(Sum t21 t22) = do
+    unifyHelper (t11, t12) (t21, t22)
+  unify t1@(Arrow t11 t12) t2@(Arrow t21 t22) = do
+    unifyHelper (t11, t12) (t21, t22)
+  -- type var and other type
   unify (TypeVar v) t
-    | v `elem` tv t = return emptySubst -- recursive
+    | v `elem` tv t = typeError $ OccursCheckFailed v t
     | otherwise = return $ v =: t
   unify t (TypeVar v) = unify (TypeVar v) t
+  -- otherwise, no unifier
+  unify t1 t2 = typeError $ TypeMismatch t1 t2
   
   
   -- generalise is to quantify a polymorphic function
@@ -142,7 +144,7 @@ module MinHS.TyInfer where
       (e', t, tee) <- inferExp env e
       let t' = substitute tee t  
           e'' = allTypes (substQType tee) e' -- run the result substitution on the entire expression
-          t'' = generalise env t
+          t'' = generalise env t'
       return ([Bind "main" (Just t'') [] e''], t', tee)
   
   
