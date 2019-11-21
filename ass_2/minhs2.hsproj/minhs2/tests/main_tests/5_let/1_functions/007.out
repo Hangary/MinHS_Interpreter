@@ -1,2 +1,0 @@
-main :: Int = let g :: (Int -> Int) = (recfun f :: (Int -> Int) x = (+) x x);
-              in g 1;

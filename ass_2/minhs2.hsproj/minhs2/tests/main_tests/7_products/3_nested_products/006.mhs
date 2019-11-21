@@ -1,1 +1,0 @@
-main = snd ( (), fst ( (7,True), () ) );

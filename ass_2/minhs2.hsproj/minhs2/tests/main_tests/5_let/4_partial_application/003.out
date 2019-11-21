@@ -1,3 +1,0 @@
-main :: Int = let f :: forall a. forall c. (a -> c -> a) = (recfun f :: (a -> c -> a) x = (recfun g :: (c -> a) y = x));
-              in let g :: forall f. (f -> Int) = f 10;
-                 in g 3;

@@ -1,3 +1,0 @@
-main :: (Int * Bool) = let y :: Int = 1;
-                       in let x :: Bool = True;
-                          in ((*) y y, x);

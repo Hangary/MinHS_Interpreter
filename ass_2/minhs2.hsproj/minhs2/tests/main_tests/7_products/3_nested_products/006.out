@@ -1,1 +1,0 @@
-main :: (Int * Bool) = snd (((), fst (((7, True), ()))));

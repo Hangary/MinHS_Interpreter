@@ -1,3 +1,0 @@
-main :: Int = fst ((if True
-                       then 1
-                       else 2, ()));

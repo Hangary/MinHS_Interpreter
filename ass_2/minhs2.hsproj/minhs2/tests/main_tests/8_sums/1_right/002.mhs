@@ -1,1 +1,0 @@
-main = Inr (Inr 1,Inr ());

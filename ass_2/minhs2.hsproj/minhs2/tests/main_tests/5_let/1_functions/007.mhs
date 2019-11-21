@@ -1,4 +1,0 @@
-main
-    = let g =
-            recfun f x = x + x ;
-      in g 1;

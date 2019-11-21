@@ -1,2 +1,0 @@
-main
-     = (recfun f x = x + x) 1;
