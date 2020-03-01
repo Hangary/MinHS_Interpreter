@@ -1,5 +1,0 @@
-main :: Int
-     =
-    let x :: Int
-          = main;
-    in x;

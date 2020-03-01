@@ -1,2 +1,0 @@
-main :: Int = let x :: [Int] = Nil;
-                in if null x then 0 else 1;
